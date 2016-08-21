@@ -13,5 +13,11 @@ FastRdfsForwardChainingSail forwardChainingSail = new FastRdfsForwardChainingSai
 //  FastRdfsForwardChainingSail forwardChainingSail = new FastRdfsForwardChainingSail(memoryStore, schema, false);
 
 SailRepository sailRepository = new SailRepository(forwardChainingSail);
+sailRepository.initialize();
+
 ```
 
+# How it works
+The basis of FastRdfsForwardChainingSail is a set of precomputed hashmaps for quickly looking up types and properties so that 
+the incoming data can be streamed through the reasoner. The predicate of each triple is looked up in a domain and a range hashmap to 
+apply the correct domain and range types, and triples with rdf:type are looked up in a sub-class hashmap for retriving the new types.
