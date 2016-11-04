@@ -19,8 +19,10 @@
  */
 
 
+import com.google.common.collect.Lists;
 import info.aduna.iteration.Iterations;
 import org.openrdf.IsolationLevel;
+import org.openrdf.IsolationLevels;
 import org.openrdf.model.IRI;
 import org.openrdf.model.Statement;
 import org.openrdf.model.ValueFactory;
@@ -73,7 +75,7 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
     public void initialize() throws SailException {
-        data.initialize();
+        super.initialize();
 
 
         List<Statement> schemaStatements = null;
@@ -87,6 +89,8 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
             schemaConnection.commit();
         }
 
+
+
         addBaseRdfs(schema);
 
 
@@ -98,7 +102,7 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
         calculateRangeDomain(schema, RDFS.DOMAIN, calculatedDomain);
 
 
-        AbstractForwardChainingInferencerConnection connection = getConnection();
+        InferencerConnection connection = getConnection();
         connection.begin();
         calculatedTypes.forEach((subClass, superClasses) -> {
             connection.addInferredStatement(subClass, RDFS.SUBCLASSOF, subClass);
@@ -135,9 +139,11 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
 
+
+
     private void addBaseRdfs(Repository schema) {
         try (RepositoryConnection connection = schema.getConnection()) {
-            AbstractForwardChainingInferencerConnection inferencerConnection = getConnection();
+            InferencerConnection inferencerConnection = getConnection();
             inferencerConnection.begin();
 
             RDFParser parser = Rio.createParser(RDFFormat.TURTLE);
@@ -354,15 +360,8 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
 
-    public void shutDown() throws SailException {
 
-    }
-
-    public boolean isWritable() throws SailException {
-        return false;
-    }
-
-    public AbstractForwardChainingInferencerConnection getConnection() throws SailException {
+    public InferencerConnection getConnection() throws SailException {
         InferencerConnection e = (InferencerConnection) super.getConnection();
         return new FastRdfsForwardChainingSailConnetion(this, e);
     }
@@ -373,11 +372,14 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
     public List<IsolationLevel> getSupportedIsolationLevels() {
-        return null;
+        ArrayList<IsolationLevel> isolationLevels = new ArrayList<>();
+        isolationLevels.add(IsolationLevels.NONE);
+
+        return isolationLevels;
     }
 
     public IsolationLevel getDefaultIsolationLevel() {
-        return null;
+        return IsolationLevels.NONE;
     }
 
     Set<IRI> resolveTypes(IRI value) {
