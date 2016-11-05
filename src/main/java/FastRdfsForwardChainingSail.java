@@ -19,13 +19,10 @@
  */
 
 
-import com.google.common.collect.Lists;
 import info.aduna.iteration.Iterations;
 import org.openrdf.IsolationLevel;
 import org.openrdf.IsolationLevels;
-import org.openrdf.model.IRI;
-import org.openrdf.model.Statement;
-import org.openrdf.model.ValueFactory;
+import org.openrdf.model.*;
 import org.openrdf.model.impl.SimpleValueFactory;
 import org.openrdf.model.vocabulary.RDF;
 import org.openrdf.model.vocabulary.RDFS;
@@ -37,24 +34,31 @@ import org.openrdf.sail.SailException;
 import org.openrdf.sail.helpers.AbstractNotifyingSail;
 import org.openrdf.sail.inferencer.InferencerConnection;
 import org.openrdf.sail.inferencer.fc.AbstractForwardChainingInferencer;
-import org.openrdf.sail.inferencer.fc.AbstractForwardChainingInferencerConnection;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferencer {
 
     final AbstractNotifyingSail data;
-    private final Repository schema;
-    private Map<IRI, HashSet<IRI>> calculatedTypes = new HashMap<>();
-    private Map<IRI, HashSet<IRI>> calculatedProperties = new HashMap<>();
-    private Map<IRI, HashSet<IRI>> calculatedRange = new HashMap<>();
-    private Map<IRI, HashSet<IRI>> calculatedDomain = new HashMap<>();
+    final Repository schema;
+
     boolean sesameCompliant = false;
+
+    List<Statement> subClassOfStatemenets = new ArrayList<>();
+    List<Statement> propertyStatements = new ArrayList<>();
+    List<Statement> subPropertyOfStatemenets = new ArrayList<>();
+    List<Statement> rangeStatemenets = new ArrayList<>();
+    List<Statement> domainStatemenets = new ArrayList<>();
+
+
+     Map<IRI, HashSet<IRI>> calculatedTypes = new HashMap<>();
+     Map<IRI, HashSet<IRI>> calculatedProperties = new HashMap<>();
+     Map<IRI, HashSet<IRI>> calculatedRange = new HashMap<>();
+     Map<IRI, HashSet<IRI>> calculatedDomain = new HashMap<>();
 
 
     public FastRdfsForwardChainingSail(AbstractNotifyingSail data, Repository schema) {
@@ -74,77 +78,50 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
 
     }
 
+
+
+
+
     public void initialize() throws SailException {
         super.initialize();
 
+        FastRdfsForwardChainingSailConnetion connection = getConnection();
+        connection.begin();
 
-        List<Statement> schemaStatements = null;
 
-        try (RepositoryConnection schemaConnection = schema.getConnection()) {
-            schemaConnection.begin();
-            RepositoryResult<Statement> statements = schemaConnection.getStatements(null, null, null);
+        List<Statement> schemaStatements = new ArrayList<>();
 
-            schemaStatements = Iterations.stream(statements).collect(Collectors.toList());
 
-            schemaConnection.commit();
+
+        if (schema != null) {
+
+            try (RepositoryConnection schemaConnection = schema.getConnection()) {
+                schemaConnection.begin();
+                RepositoryResult<Statement> statements = schemaConnection.getStatements(null, null, null);
+
+                schemaStatements = Iterations.stream(statements)
+                    .peek(connection::statementCollector)
+                    .collect(Collectors.toList());
+
+                schemaConnection.commit();
+            }
+
+            iterateOverSchema(connection);
         }
 
 
+        connection.temp();
 
-        addBaseRdfs(schema);
-
-
-        calculateSubClassOf(schema);
-        findProperties(schema);
-        calculateSubPropertyOf(schema);
-
-        calculateRangeDomain(schema, RDFS.RANGE, calculatedRange);
-        calculateRangeDomain(schema, RDFS.DOMAIN, calculatedDomain);
-
-
-        InferencerConnection connection = getConnection();
-        connection.begin();
-        calculatedTypes.forEach((subClass, superClasses) -> {
-            connection.addInferredStatement(subClass, RDFS.SUBCLASSOF, subClass);
-
-            superClasses.forEach(superClass -> {
-                connection.addInferredStatement(subClass, RDFS.SUBCLASSOF, superClass);
-                connection.addInferredStatement(superClass, RDFS.SUBCLASSOF, superClass);
-
-            });
-        });
-
-        calculatedProperties.forEach((sub, sups) -> {
-            connection.addInferredStatement(sub, RDFS.SUBPROPERTYOF, sub);
-
-            sups.forEach(sup -> {
-                connection.addInferredStatement(sub, RDFS.SUBPROPERTYOF, sup);
-                connection.addInferredStatement(sup, RDFS.SUBPROPERTYOF, sup);
-
-            });
-        });
-
-
-        schemaStatements.forEach(s -> {
-            connection.addStatement(s.getSubject(), s.getPredicate(), s.getObject(), s.getContext());
-        });
+        schemaStatements.forEach(s -> connection.addStatement(s.getSubject(), s.getPredicate(), s.getObject(), s.getContext()));
 
         connection.commit();
         connection.close();
 
-
-        System.out.println("");
-
-
     }
 
+    private void iterateOverSchema(FastRdfsForwardChainingSailConnetion connection) {
+        try {
 
-
-
-    private void addBaseRdfs(Repository schema) {
-        try (RepositoryConnection connection = schema.getConnection()) {
-            InferencerConnection inferencerConnection = getConnection();
-            inferencerConnection.begin();
 
             RDFParser parser = Rio.createParser(RDFFormat.TURTLE);
             parser.setRDFHandler(new RDFHandler() {
@@ -159,196 +136,29 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
                 }
 
                 @Override
-                public void handleNamespace(String s, String s1) throws RDFHandlerException {
+                public void handleNamespace(String s11, String s1) throws RDFHandlerException {
 
                 }
 
                 @Override
                 public void handleStatement(Statement statement) throws RDFHandlerException {
-                    connection.add(statement);
-                    inferencerConnection.addInferredStatement(statement.getSubject(), statement.getPredicate(), statement.getObject());
+                    connection.statementCollector(statement);
+                    connection.addInferredStatement(statement.getSubject(), statement.getPredicate(), statement.getObject());
                 }
 
                 @Override
-                public void handleComment(String s) throws RDFHandlerException {
+                public void handleComment(String s1) throws RDFHandlerException {
 
                 }
             });
 
             parser.parse(new ByteArrayInputStream(baseRDFS.getBytes("UTF-8")), "");
 
-            inferencerConnection.commit();
-            inferencerConnection.close();
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
+
+        } catch (IOException ignored) {
         }
     }
 
-    private void calculateSubClassOf(Repository schema) {
-        try (RepositoryConnection connection = schema.getConnection()) {
-            RepositoryResult<Statement> statements = connection.getStatements(null, RDFS.SUBCLASSOF, null);
-            Iterations.stream(statements)
-                .forEach(s -> {
-                    IRI subClass = (IRI) s.getSubject();
-                    if (!calculatedTypes.containsKey(subClass)) {
-                        calculatedTypes.put(subClass, new HashSet<>());
-                    }
-
-                    calculatedTypes.get(subClass).add((IRI) s.getObject());
-
-                });
-        }
-
-        long prevSize = 0;
-        final long[] newSize = {-1};
-        while (prevSize != newSize[0]) {
-
-            prevSize = newSize[0];
-
-            newSize[0] = 0;
-
-            calculatedTypes.forEach((key, value) -> {
-                List<IRI> temp = new ArrayList<IRI>();
-                value.forEach(superClass -> {
-                    temp
-                        .addAll(resolveTypes(superClass));
-                });
-
-                value.addAll(temp);
-                newSize[0] += value.size();
-            });
-
-
-        }
-    }
-
-    private void findProperties(Repository schema) {
-        try (RepositoryConnection connection = schema.getConnection()) {
-
-
-            RepositoryResult<Statement> statements = connection.getStatements(null, RDF.TYPE, RDF.PROPERTY);
-            Iterations.stream(statements)
-                .forEach(s -> {
-                    IRI property = (IRI) s.getSubject();
-
-                    if (!calculatedProperties.containsKey(property)) {
-                        calculatedProperties.put(property, new HashSet<>());
-                    }
-
-                });
-        }
-
-    }
-
-
-    private void calculateSubPropertyOf(Repository schema) {
-        try (RepositoryConnection connection = schema.getConnection()) {
-
-
-            RepositoryResult<Statement> statements = connection.getStatements(null, RDFS.SUBPROPERTYOF, null);
-            Iterations.stream(statements)
-                .forEach(s -> {
-                    IRI subClass = (IRI) s.getSubject();
-                    IRI superClass = (IRI) s.getObject();
-                    if (!calculatedProperties.containsKey(subClass)) {
-                        calculatedProperties.put(subClass, new HashSet<>());
-                    }
-
-                    if (!calculatedProperties.containsKey(superClass)) {
-                        calculatedProperties.put(superClass, new HashSet<>());
-                    }
-
-                    calculatedProperties.get(subClass).add((IRI) s.getObject());
-
-                });
-        }
-
-        long prevSize = 0;
-        final long[] newSize = {-1};
-        while (prevSize != newSize[0]) {
-
-            prevSize = newSize[0];
-
-            newSize[0] = 0;
-
-            calculatedProperties.forEach((key, value) -> {
-                List<IRI> temp = new ArrayList<IRI>();
-                value.forEach(superProperty -> {
-                    temp
-                        .addAll(resolveProperties(superProperty));
-                });
-
-                value.addAll(temp);
-                newSize[0] += value.size();
-            });
-
-
-        }
-    }
-
-    private void calculateRangeDomain(Repository schema, IRI rangeOrDomain, Map<IRI, HashSet<IRI>> calculatedRangeOrDomain) {
-        try (RepositoryConnection connection = schema.getConnection()) {
-            RepositoryResult<Statement> statements = connection.getStatements(null, rangeOrDomain, null);
-            Iterations.stream(statements)
-                .forEach(s -> {
-                    IRI predicate = (IRI) s.getSubject();
-                    if (!calculatedProperties.containsKey(predicate)) {
-                        calculatedProperties.put(predicate, new HashSet<>());
-                    }
-
-                    if (!calculatedRangeOrDomain.containsKey(predicate)) {
-                        calculatedRangeOrDomain.put(predicate, new HashSet<>());
-                    }
-
-                    calculatedRangeOrDomain.get(predicate).add((IRI) s.getObject());
-
-                    if (!calculatedTypes.containsKey(s.getObject())) {
-                        calculatedTypes.put((IRI) s.getObject(), new HashSet<>());
-                    }
-
-                });
-        }
-
-        calculatedProperties
-            .keySet()
-            .stream()
-            .filter(key -> !calculatedRangeOrDomain.containsKey(key))
-            .forEach(key -> calculatedRangeOrDomain.put(key, new HashSet<>()));
-
-        long prevSize = 0;
-        final long[] newSize = {-1};
-        while (prevSize != newSize[0]) {
-
-            prevSize = newSize[0];
-
-            newSize[0] = 0;
-
-            calculatedRangeOrDomain.forEach((key, value) -> {
-                List<IRI> resolvedBySubProperty = new ArrayList<>();
-                resolveProperties(key).forEach(newPredicate -> {
-                    HashSet<IRI> iris = calculatedRangeOrDomain.get(newPredicate);
-                    if (iris != null) {
-                        resolvedBySubProperty.addAll(iris);
-                    }
-
-                });
-
-                List<IRI> resolvedBySubClass = new ArrayList<>();
-                value.addAll(resolvedBySubProperty);
-
-
-                value.stream().map(this::resolveTypes).forEach(resolvedBySubClass::addAll);
-
-                value.addAll(resolvedBySubClass);
-
-                newSize[0] += value.size();
-            });
-
-
-        }
-    }
 
 
     public void setDataDir(File file) {
@@ -360,8 +170,7 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
 
-
-    public InferencerConnection getConnection() throws SailException {
+    public FastRdfsForwardChainingSailConnetion getConnection() throws SailException {
         InferencerConnection e = (InferencerConnection) super.getConnection();
         return new FastRdfsForwardChainingSailConnetion(this, e);
     }
@@ -382,30 +191,6 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
         return IsolationLevels.NONE;
     }
 
-    Set<IRI> resolveTypes(IRI value) {
-        Set<IRI> iris = calculatedTypes.get(value);
-
-        return iris != null ? iris : Collections.emptySet();
-    }
-
-    Set<IRI> resolveProperties(IRI predicate) {
-        Set<IRI> iris = calculatedProperties.get(predicate);
-
-        return iris != null ? iris : Collections.emptySet();
-    }
-
-
-    Set<IRI> resolveRangeTypes(IRI predicate) {
-        Set<IRI> iris = calculatedRange.get(predicate);
-
-        return iris != null ? iris : Collections.emptySet();
-    }
-
-    Set<IRI> resolveDomainTypes(IRI predicate) {
-        Set<IRI> iris = calculatedDomain.get(predicate);
-
-        return iris != null ? iris : Collections.emptySet();
-    }
 
 
     static final String baseRDFS =
