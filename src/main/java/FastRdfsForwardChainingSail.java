@@ -76,11 +76,27 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
 
+    public FastRdfsForwardChainingSail(AbstractNotifyingSail data) {
+        super(data);
+        schema = null;
+        this.data = data;
+
+    }
+
     public FastRdfsForwardChainingSail(AbstractNotifyingSail data, Repository schema) {
         super(data);
 
         this.data = data;
         this.schema = schema;
+
+    }
+
+    public FastRdfsForwardChainingSail(AbstractNotifyingSail data, boolean sesameCompliant) {
+        super(data);
+        schema = null;
+
+        this.data = data;
+        this.sesameCompliant = sesameCompliant;
 
     }
 
