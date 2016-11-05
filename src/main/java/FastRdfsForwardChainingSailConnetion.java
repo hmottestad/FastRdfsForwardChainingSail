@@ -275,6 +275,9 @@ public class FastRdfsForwardChainingSailConnetion extends AbstractForwardChainin
     @Override
     protected void doInferencing() throws SailException {
         if(fastRdfsForwardChainingSail.schema == null){
+
+            fastRdfsForwardChainingSail.clearInferenceTables();
+
             try (CloseableIteration<? extends Statement, SailException> statements = connection.getStatements(null, null, null, false)) {
                 while (statements.hasNext()) {
                     Statement next = statements.next();
@@ -282,6 +285,7 @@ public class FastRdfsForwardChainingSailConnetion extends AbstractForwardChainin
                 }
             }
             temp();
+            inferredCleared = true;
 
         }
 
@@ -300,6 +304,8 @@ public class FastRdfsForwardChainingSailConnetion extends AbstractForwardChainin
         inferredCleared = false;
 
     }
+
+
 
 
     @Override

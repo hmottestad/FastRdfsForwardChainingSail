@@ -22,10 +22,10 @@
 import info.aduna.iteration.Iterations;
 import org.openrdf.IsolationLevel;
 import org.openrdf.IsolationLevels;
-import org.openrdf.model.*;
+import org.openrdf.model.IRI;
+import org.openrdf.model.Statement;
+import org.openrdf.model.ValueFactory;
 import org.openrdf.model.impl.SimpleValueFactory;
-import org.openrdf.model.vocabulary.RDF;
-import org.openrdf.model.vocabulary.RDFS;
 import org.openrdf.repository.Repository;
 import org.openrdf.repository.RepositoryConnection;
 import org.openrdf.repository.RepositoryResult;
@@ -55,10 +55,25 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     List<Statement> domainStatemenets = new ArrayList<>();
 
 
-     Map<IRI, HashSet<IRI>> calculatedTypes = new HashMap<>();
-     Map<IRI, HashSet<IRI>> calculatedProperties = new HashMap<>();
-     Map<IRI, HashSet<IRI>> calculatedRange = new HashMap<>();
-     Map<IRI, HashSet<IRI>> calculatedDomain = new HashMap<>();
+    Map<IRI, HashSet<IRI>> calculatedTypes = new HashMap<>();
+    Map<IRI, HashSet<IRI>> calculatedProperties = new HashMap<>();
+    Map<IRI, HashSet<IRI>> calculatedRange = new HashMap<>();
+    Map<IRI, HashSet<IRI>> calculatedDomain = new HashMap<>();
+
+
+    void clearInferenceTables() {
+        subClassOfStatemenets = new ArrayList<>();
+        propertyStatements = new ArrayList<>();
+        subPropertyOfStatemenets = new ArrayList<>();
+        rangeStatemenets = new ArrayList<>();
+        domainStatemenets = new ArrayList<>();
+        calculatedTypes = new HashMap<>();
+        calculatedProperties = new HashMap<>();
+        calculatedRange = new HashMap<>();
+        calculatedDomain = new HashMap<>();
+
+
+    }
 
 
     public FastRdfsForwardChainingSail(AbstractNotifyingSail data, Repository schema) {
@@ -79,9 +94,6 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
 
-
-
-
     public void initialize() throws SailException {
         super.initialize();
 
@@ -90,7 +102,6 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
 
 
         List<Statement> schemaStatements = new ArrayList<>();
-
 
 
         if (schema != null) {
@@ -160,7 +171,6 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     }
 
 
-
     public void setDataDir(File file) {
         throw new UnsupportedOperationException();
     }
@@ -190,7 +200,6 @@ public class FastRdfsForwardChainingSail extends AbstractForwardChainingInferenc
     public IsolationLevel getDefaultIsolationLevel() {
         return IsolationLevels.NONE;
     }
-
 
 
     static final String baseRDFS =
